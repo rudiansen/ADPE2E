@@ -1,6 +1,6 @@
 {
     "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
-    "contentVersion": "1.0.0.0",
+    "contentVersion": "1.0.0.0",    
     "parameters": {
         "ADPAdminUserName": {
             "type": "string",
@@ -21,20 +21,9 @@
         "ADPAdminUserName":"adpadmin",
         "ADPAdminPassword":"P@ssw0rd123!",
 
-        "DesktopVMSize":"Standard_A4_v2",
         "SynapseSQLDWSize":"DW200c",
 
-        "UniqueSuffix":"[uniqueString(resourceGroup().id)]",
-
-        "ADPVirtualNetworkName": "ADPVirtualNetwork",
-        "ADPVirtualNetworkIPAddressPrefix": "10.10.0.0/16",
-        "ADPVirtualSubnetName": "default",
-        "ADPVirtualSubnetIPAddressPrefix": "10.10.0.0/24",
-        
-        "ADPDesktopName":"ADPDesktop",
-        "ADPDesktopNICName":"[concat(variables('ADPDesktopName'),'-nic')]",
-        "ADPDesktopOSDiskName":"[concat(variables('ADPDesktopName'),'_OsDisk')]",
-        "ADPDesktopPublicIPName":"[concat(variables('ADPDesktopName'),'-publicip')]",
+        "UniqueSuffix":"[uniqueString(resourceGroup().id)]",       
         
         "ADPDataLakeStorageName":"[concat('synapsedatalake', substring(variables('UniqueSuffix'),0,5))]",
 
@@ -45,236 +34,9 @@
         "ADPSynapseDWCollation": "SQL_Latin1_General_CP1_CI_AS",
 
         "ADPDataFactoryName": "[concat('SynapseDataFactory-',substring(variables('UniqueSuffix'),0,5))]",
-        "ADPDataFactoryLocation": "[resourceGroup().location]",
-
-		"ADPBastionName": "ADPBastionHost",
-		"ADPBastionPublicIPName": "[concat(variables('ADPBastionName'),'-publicip')]"
+        "ADPDataFactoryLocation": "[resourceGroup().location]"
     },
-    "resources": [
-        {
-            "type": "Microsoft.Network/virtualNetworks",
-            "name": "[variables('ADPVirtualNetworkName')]",
-            "apiVersion": "2018-12-01",
-            "location": "[resourceGroup().location]",
-            "scale": null,
-            "properties": {
-                "provisioningState": "Succeeded",
-                "addressSpace": {
-                    "addressPrefixes": [
-                        "[variables('ADPVirtualNetworkIPAddressPrefix')]"
-                    ]
-                },
-                "subnets": [
-                    {
-                        "name": "default",
-                        "properties": {
-                            "provisioningState": "Succeeded",
-                            "addressPrefix": "[variables('ADPVirtualSubnetIPAddressPrefix')]",
-                            "delegations": []
-                        }
-                    },
-					{
-                        "name": "AzureBastionSubnet",
-                        "properties": {
-                            "addressPrefix": "10.10.100.0/24",
-                            "serviceEndpoints": [],
-                            "delegations": [],
-                            "privateEndpointNetworkPolicies": "Enabled",
-                            "privateLinkServiceNetworkPolicies": "Enabled"
-                        }
-                    }
-                ],
-                "virtualNetworkPeerings": [],
-                "enableDdosProtection": false,
-                "enableVmProtection": false
-            },
-            "dependsOn": []
-        },
-        {
-            "type": "Microsoft.Network/virtualNetworks/subnets",
-            "name": "[concat(variables('ADPVirtualNetworkName'), '/', variables('ADPVirtualSubnetName'))]",
-            "apiVersion": "2019-09-01",
-            "scale": null,
-            "properties": {
-                "provisioningState": "Succeeded",
-                "addressPrefix": "[variables('ADPVirtualSubnetIPAddressPrefix')]",
-                "delegations": []
-            },
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/virtualNetworks', variables('ADPVirtualNetworkName'))]"
-            ]
-        },
-        {
-            "type": "Microsoft.Network/virtualNetworks/subnets",
-            "apiVersion": "2019-09-01",
-            "name": "[concat(variables('ADPVirtualNetworkName'), '/', '/AzureBastionSubnet')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/virtualNetworks', variables('ADPVirtualNetworkName'))]"
-            ],
-            "properties": {
-                "addressPrefix": "10.10.100.0/24",
-                "serviceEndpoints": [],
-                "delegations": [],
-                "privateEndpointNetworkPolicies": "Enabled",
-                "privateLinkServiceNetworkPolicies": "Enabled"
-            }
-        },
-        {
-            "type": "Microsoft.Network/publicIPAddresses",
-            "sku": {
-                "name": "Basic",
-                "tier": "Regional"
-            },
-            "name": "[variables('ADPDesktopPublicIPName')]",
-            "apiVersion": "2018-12-01",
-            "location": "[resourceGroup().location]",
-            "tags": {},
-            "scale": null,
-            "properties": {
-                "provisioningState": "Succeeded",
-                "publicIPAddressVersion": "IPv4",
-                "publicIPAllocationMethod": "Dynamic",
-                "idleTimeoutInMinutes": 4,
-                "ipTags": []
-            },
-            "dependsOn": []
-        },
-		{
-            "type": "Microsoft.Network/publicIPAddresses",
-            "apiVersion": "2019-09-01",
-            "name": "[variables('ADPBastionPublicIPName')]",
-            "location": "[resourceGroup().location]",
-            "sku": {
-                "name": "Standard"
-            },
-            "properties": {
-                "ipAddress": "20.188.223.148",
-                "publicIPAddressVersion": "IPv4",
-                "publicIPAllocationMethod": "Static",
-                "idleTimeoutInMinutes": 4,
-                "ipTags": []
-            }
-        },
-        {
-            "type": "Microsoft.Network/bastionHosts",
-            "apiVersion": "2019-09-01",
-            "name": "[variables('ADPBastionName')]",
-            "location": "[resourceGroup().location]",
-            "properties": {
-                "dnsName": "[concat('bst-',guid(subscription().subscriptionId),'.bastion.azure.com')]",
-                "ipConfigurations": [
-                    {
-                        "name": "IpConf",
-                        "properties": {
-                            "privateIPAllocationMethod": "Dynamic",
-                            "publicIPAddress": {
-                                "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('ADPBastionPublicIPName'))]"
-                            },
-                            "subnet": {
-                                "id": "[concat(resourceId('Microsoft.Network/virtualNetworks', variables('ADPVirtualNetworkName')), '/subnets/AzureBastionSubnet')]"
-                            }
-                        }
-                    }
-                ]
-            },
-			"dependsOn": [
-				"[resourceId('Microsoft.Network/virtualNetworks', variables('ADPVirtualNetworkName'))]"
-			]
-        },
-        {
-            "type": "Microsoft.Compute/virtualMachines",
-            "name": "[variables('ADPDesktopName')]",
-            "apiVersion": "2018-10-01",
-            "location": "[resourceGroup().location]",
-            "tags": {},
-            "scale": null,
-            "properties": {
-                "hardwareProfile": {
-                    "vmSize": "[variables('DesktopVMSize')]"
-                },
-                "storageProfile": {
-                    "imageReference": {
-                        "publisher": "MicrosoftWindowsDesktop",
-                        "offer": "Windows-10",
-                        "sku": "rs5-pro",
-                        "version": "latest"
-                    },
-                    "osDisk": {
-                        "osType": "Windows",
-                        "name": "[variables('ADPDesktopOSDiskName')]",
-                        "createOption": "FromImage",
-                        "caching": "ReadWrite",
-                        "managedDisk": {
-                            "storageAccountType": "StandardSSD_LRS"
-                        },
-                        "diskSizeGB": 127
-                    },
-                    "dataDisks": []
-                },
-                "osProfile": {
-                    "computerName": "[variables('ADPDesktopName')]",
-                    "adminUsername": "[parameters('ADPAdminUserName')]",
-                    "adminPassword": "[parameters('ADPAdminPassword')]",
-                    "windowsConfiguration": {
-                        "provisionVMAgent": true,
-                        "enableAutomaticUpdates": true
-                    },
-                    "secrets": [],
-                    "allowExtensionOperations": true
-                },
-                "networkProfile": {
-                    "networkInterfaces": [
-                        {
-                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('ADPDesktopNICName'))]"
-                        }
-                    ]
-                },
-                "licenseType": "Windows_Client"
-            },
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/networkInterfaces', variables('ADPDesktopNICName'))]"
-            ]
-        },
-        {
-            "type": "Microsoft.Network/networkInterfaces",
-            "name": "[variables('ADPDesktopNICName')]",
-            "apiVersion": "2018-12-01",
-            "location": "[resourceGroup().location]",
-            "tags": {},
-            "scale": null,
-            "properties": {
-                "provisioningState": "Succeeded",
-                "ipConfigurations": [
-                    {
-                        "name": "ipconfig1",
-                        "properties": {
-                            "provisioningState": "Succeeded",
-                            "privateIPAllocationMethod": "Dynamic",
-                            "publicIPAddress": {
-                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('ADPDesktopPublicIPName'))]"
-                            },
-                            "subnet": {
-                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('ADPVirtualNetworkName'), variables('ADPVirtualSubnetName'))]"
-                            },
-                            "primary": true,
-                            "privateIPAddressVersion": "IPv4"
-                        }
-                    }
-                ],
-                "dnsSettings": {
-                    "dnsServers": [],
-                    "appliedDnsServers": []
-                },
-                "enableAcceleratedNetworking": false,
-                "enableIPForwarding": false,
-                "primary": true,
-                "tapConfigurations": []
-            },
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/publicIPAddresses', variables('ADPDesktopPublicIPName'))]",
-                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('ADPVirtualNetworkName'), variables('ADPVirtualSubnetName'))]"
-            ]
-        },
+    "resources": [       
         {
             "type": "Microsoft.Storage/storageAccounts",
             "sku": {
