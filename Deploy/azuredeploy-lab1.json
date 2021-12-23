@@ -1,0 +1,567 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "ADPAdminUserName": {
+            "type": "string",
+            "defaultValue": "adpadmin",
+            "metadata": {
+                "description": "Admin user name to connect to all services during the workshop."
+            }   
+        },
+        "ADPAdminPassword": {
+            "type": "string",
+            "defaultValue": "P@ssw0rd123!",
+            "metadata": {
+                "description": "Admin password used to connect to all services during the workshop."
+            }   
+        }
+    },
+    "variables": {
+        "ADPAdminUserName":"adpadmin",
+        "ADPAdminPassword":"P@ssw0rd123!",
+
+        "DesktopVMSize":"Standard_A4_v2",
+        "SynapseSQLDWSize":"DW200c",
+
+        "UniqueSuffix":"[uniqueString(resourceGroup().id)]",
+
+        "ADPVirtualNetworkName": "ADPVirtualNetwork",
+        "ADPVirtualNetworkIPAddressPrefix": "10.10.0.0/16",
+        "ADPVirtualSubnetName": "default",
+        "ADPVirtualSubnetIPAddressPrefix": "10.10.0.0/24",
+        
+        "ADPDesktopName":"ADPDesktop",
+        "ADPDesktopNICName":"[concat(variables('ADPDesktopName'),'-nic')]",
+        "ADPDesktopOSDiskName":"[concat(variables('ADPDesktopName'),'_OsDisk')]",
+        "ADPDesktopPublicIPName":"[concat(variables('ADPDesktopName'),'-publicip')]",
+        
+        "ADPDataLakeStorageName":"[concat('synapsedatalake', substring(variables('UniqueSuffix'),0,5))]",
+
+		"ADPOperationalSQLEndpoint": "[concat('operationalsql-', substring(variables('UniqueSuffix'),0,5))]",
+
+        "ADPSynapseSQLEndpoint": "[concat('synapsesql-', substring(variables('UniqueSuffix'),0,5))]",
+        "ADPSynapseDWName":"SynapseDW",
+        "ADPSynapseDWCollation": "SQL_Latin1_General_CP1_CI_AS",
+
+        "ADPDataFactoryName": "[concat('SynapseDataFactory-',substring(variables('UniqueSuffix'),0,5))]",
+        "ADPDataFactoryLocation": "[resourceGroup().location]",
+
+		"ADPBastionName": "ADPBastionHost",
+		"ADPBastionPublicIPName": "[concat(variables('ADPBastionName'),'-publicip')]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Network/virtualNetworks",
+            "name": "[variables('ADPVirtualNetworkName')]",
+            "apiVersion": "2018-12-01",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {
+                "provisioningState": "Succeeded",
+                "addressSpace": {
+                    "addressPrefixes": [
+                        "[variables('ADPVirtualNetworkIPAddressPrefix')]"
+                    ]
+                },
+                "subnets": [
+                    {
+                        "name": "default",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "addressPrefix": "[variables('ADPVirtualSubnetIPAddressPrefix')]",
+                            "delegations": []
+                        }
+                    },
+					{
+                        "name": "AzureBastionSubnet",
+                        "properties": {
+                            "addressPrefix": "10.10.100.0/24",
+                            "serviceEndpoints": [],
+                            "delegations": [],
+                            "privateEndpointNetworkPolicies": "Enabled",
+                            "privateLinkServiceNetworkPolicies": "Enabled"
+                        }
+                    }
+                ],
+                "virtualNetworkPeerings": [],
+                "enableDdosProtection": false,
+                "enableVmProtection": false
+            },
+            "dependsOn": []
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "name": "[concat(variables('ADPVirtualNetworkName'), '/', variables('ADPVirtualSubnetName'))]",
+            "apiVersion": "2019-09-01",
+            "scale": null,
+            "properties": {
+                "provisioningState": "Succeeded",
+                "addressPrefix": "[variables('ADPVirtualSubnetIPAddressPrefix')]",
+                "delegations": []
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('ADPVirtualNetworkName'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/virtualNetworks/subnets",
+            "apiVersion": "2019-09-01",
+            "name": "[concat(variables('ADPVirtualNetworkName'), '/', '/AzureBastionSubnet')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks', variables('ADPVirtualNetworkName'))]"
+            ],
+            "properties": {
+                "addressPrefix": "10.10.100.0/24",
+                "serviceEndpoints": [],
+                "delegations": [],
+                "privateEndpointNetworkPolicies": "Enabled",
+                "privateLinkServiceNetworkPolicies": "Enabled"
+            }
+        },
+        {
+            "type": "Microsoft.Network/publicIPAddresses",
+            "sku": {
+                "name": "Basic",
+                "tier": "Regional"
+            },
+            "name": "[variables('ADPDesktopPublicIPName')]",
+            "apiVersion": "2018-12-01",
+            "location": "[resourceGroup().location]",
+            "tags": {},
+            "scale": null,
+            "properties": {
+                "provisioningState": "Succeeded",
+                "publicIPAddressVersion": "IPv4",
+                "publicIPAllocationMethod": "Dynamic",
+                "idleTimeoutInMinutes": 4,
+                "ipTags": []
+            },
+            "dependsOn": []
+        },
+		{
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2019-09-01",
+            "name": "[variables('ADPBastionPublicIPName')]",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "Standard"
+            },
+            "properties": {
+                "ipAddress": "20.188.223.148",
+                "publicIPAddressVersion": "IPv4",
+                "publicIPAllocationMethod": "Static",
+                "idleTimeoutInMinutes": 4,
+                "ipTags": []
+            }
+        },
+        {
+            "type": "Microsoft.Network/bastionHosts",
+            "apiVersion": "2019-09-01",
+            "name": "[variables('ADPBastionName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "dnsName": "[concat('bst-',guid(subscription().subscriptionId),'.bastion.azure.com')]",
+                "ipConfigurations": [
+                    {
+                        "name": "IpConf",
+                        "properties": {
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('ADPBastionPublicIPName'))]"
+                            },
+                            "subnet": {
+                                "id": "[concat(resourceId('Microsoft.Network/virtualNetworks', variables('ADPVirtualNetworkName')), '/subnets/AzureBastionSubnet')]"
+                            }
+                        }
+                    }
+                ]
+            },
+			"dependsOn": [
+				"[resourceId('Microsoft.Network/virtualNetworks', variables('ADPVirtualNetworkName'))]"
+			]
+        },
+        {
+            "type": "Microsoft.Compute/virtualMachines",
+            "name": "[variables('ADPDesktopName')]",
+            "apiVersion": "2018-10-01",
+            "location": "[resourceGroup().location]",
+            "tags": {},
+            "scale": null,
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[variables('DesktopVMSize')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "MicrosoftWindowsDesktop",
+                        "offer": "Windows-10",
+                        "sku": "rs5-pro",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "osType": "Windows",
+                        "name": "[variables('ADPDesktopOSDiskName')]",
+                        "createOption": "FromImage",
+                        "caching": "ReadWrite",
+                        "managedDisk": {
+                            "storageAccountType": "StandardSSD_LRS"
+                        },
+                        "diskSizeGB": 127
+                    },
+                    "dataDisks": []
+                },
+                "osProfile": {
+                    "computerName": "[variables('ADPDesktopName')]",
+                    "adminUsername": "[parameters('ADPAdminUserName')]",
+                    "adminPassword": "[parameters('ADPAdminPassword')]",
+                    "windowsConfiguration": {
+                        "provisionVMAgent": true,
+                        "enableAutomaticUpdates": true
+                    },
+                    "secrets": [],
+                    "allowExtensionOperations": true
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('ADPDesktopNICName'))]"
+                        }
+                    ]
+                },
+                "licenseType": "Windows_Client"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/networkInterfaces', variables('ADPDesktopNICName'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Network/networkInterfaces",
+            "name": "[variables('ADPDesktopNICName')]",
+            "apiVersion": "2018-12-01",
+            "location": "[resourceGroup().location]",
+            "tags": {},
+            "scale": null,
+            "properties": {
+                "provisioningState": "Succeeded",
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "provisioningState": "Succeeded",
+                            "privateIPAllocationMethod": "Dynamic",
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('ADPDesktopPublicIPName'))]"
+                            },
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('ADPVirtualNetworkName'), variables('ADPVirtualSubnetName'))]"
+                            },
+                            "primary": true,
+                            "privateIPAddressVersion": "IPv4"
+                        }
+                    }
+                ],
+                "dnsSettings": {
+                    "dnsServers": [],
+                    "appliedDnsServers": []
+                },
+                "enableAcceleratedNetworking": false,
+                "enableIPForwarding": false,
+                "primary": true,
+                "tapConfigurations": []
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Network/publicIPAddresses', variables('ADPDesktopPublicIPName'))]",
+                "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('ADPVirtualNetworkName'), variables('ADPVirtualSubnetName'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts",
+            "sku": {
+                "name": "Standard_RAGRS",
+                "tier": "Standard"
+            },
+            "kind": "StorageV2",
+            "name": "[variables('ADPDataLakeStorageName')]",
+            "apiVersion": "2019-06-01",
+            "location": "[resourceGroup().location]",
+            "tags": {},
+            "scale": null,
+            "properties": {
+                "isHnsEnabled": true,
+                "networkAcls": {
+                    "bypass": "AzureServices",
+                    "virtualNetworkRules": [],
+                    "ipRules": [],
+                    "defaultAction": "Allow"
+                },
+                "supportsHttpsTrafficOnly": true,
+                "encryption": {
+                    "services": {
+                        "file": {
+                            "enabled": true
+                        },
+                        "blob": {
+                            "enabled": true
+                        }
+                    },
+                    "keySource": "Microsoft.Storage"
+                },
+                "accessTier": "Hot"
+            },
+            "dependsOn": []
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices",
+            "apiVersion": "2019-06-01",
+            "name": "[concat(variables('ADPDataLakeStorageName'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('ADPDataLakeStorageName'))]"
+            ],
+            "sku": {
+                "name": "Standard_RAGRS",
+                "tier": "Standard"
+            },
+            "properties": {
+                "cors": {
+                    "corsRules": []
+                },
+                "deleteRetentionPolicy": {
+                    "enabled": false
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/fileServices",
+            "apiVersion": "2019-06-01",
+            "name": "[concat(variables('ADPDataLakeStorageName'), '/default')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('ADPDataLakeStorageName'))]"
+            ],
+            "sku": {
+                "name": "Standard_RAGRS",
+                "tier": "Standard"
+            },
+            "properties": {
+                "cors": {
+                    "corsRules": []
+                }
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+            "apiVersion": "2019-06-01",
+            "name": "[concat(variables('ADPDataLakeStorageName'), '/default/nycimagemetadata')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('ADPDataLakeStorageName'), 'default')]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('ADPDataLakeStorageName'))]"
+            ],
+            "properties": {
+                "publicAccess": "None"
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+            "apiVersion": "2019-06-01",
+            "name": "[concat(variables('ADPDataLakeStorageName'), '/default/nycimages')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('ADPDataLakeStorageName'), 'default')]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('ADPDataLakeStorageName'))]"
+            ],
+            "properties": {
+                "publicAccess": "Blob"
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+            "apiVersion": "2019-06-01",
+            "name": "[concat(variables('ADPDataLakeStorageName'), '/default/nyctaxidata-curated')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('ADPDataLakeStorageName'), 'default')]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('ADPDataLakeStorageName'))]"
+            ],
+            "properties": {
+                "publicAccess": "None"
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+            "apiVersion": "2019-06-01",
+            "name": "[concat(variables('ADPDataLakeStorageName'), '/default/nyctaxidata-raw')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('ADPDataLakeStorageName'), 'default')]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('ADPDataLakeStorageName'))]"
+            ],
+            "properties": {
+                "publicAccess": "None"
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+            "apiVersion": "2019-06-01",
+            "name": "[concat(variables('ADPDataLakeStorageName'), '/default/nysestocktrade')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('ADPDataLakeStorageName'), 'default')]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('ADPDataLakeStorageName'))]"
+            ],
+            "properties": {
+                "publicAccess": "None"
+            }
+        },
+        {
+            "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+            "apiVersion": "2019-06-01",
+            "name": "[concat(variables('ADPDataLakeStorageName'), '/default/polybase')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('ADPDataLakeStorageName'), 'default')]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('ADPDataLakeStorageName'))]"
+            ],
+            "properties": {
+                "publicAccess": "None"
+            }
+        },
+        {
+            "type": "Microsoft.Sql/servers",
+            "kind": "v12.0",
+            "name": "[variables('ADPSynapseSQLEndpoint')]",
+            "apiVersion": "2015-05-01-preview",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {
+                "administratorLogin": "[parameters('ADPAdminUserName')]",
+                "administratorLoginPassword": "[parameters('ADPAdminPassword')]",
+                "version": "12.0"
+            },
+            "dependsOn": [],
+			"resources":[
+				{
+					"type": "firewallrules",
+					"name": "AllowAllAzureIps",
+					"location": "[resourceGroup().location]",
+					"apiVersion": "2015-05-01-preview",
+					"dependsOn": [
+						"[variables('ADPSynapseSQLEndpoint')]"
+					],
+					"properties": {
+						"startIpAddress": "0.0.0.0",
+						"endIpAddress": "0.0.0.0"
+					}
+				}
+			]
+        },
+		{
+            "type": "Microsoft.Sql/servers",
+            "kind": "v12.0",
+            "name": "[variables('ADPOperationalSQLEndpoint')]",
+            "apiVersion": "2015-05-01-preview",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {
+                "administratorLogin": "[parameters('ADPAdminUserName')]",
+                "administratorLoginPassword": "[parameters('ADPAdminPassword')]",
+                "version": "12.0"
+            },
+            "dependsOn": [],
+			"resources":[
+				{
+					"type": "firewallrules",
+					"name": "AllowAllAzureIps",
+					"location": "[resourceGroup().location]",
+					"apiVersion": "2015-05-01-preview",
+					"dependsOn": [
+						"[variables('ADPOperationalSQLEndpoint')]"
+					],
+					"properties": {
+						"startIpAddress": "0.0.0.0",
+						"endIpAddress": "0.0.0.0"
+					}
+				}
+			]
+        },
+        {
+            "type": "Microsoft.Sql/servers/databases",
+            "sku": {
+                "name": "[variables('SynapseSQLDWSize')]",
+                "tier": "DataWarehouse"
+            },
+            "kind": "v12.0,user,datawarehouse,gen2",
+            "name": "[concat(variables('ADPSynapseSQLEndpoint'), '/', variables('ADPSynapseDWName'))]",
+            "apiVersion": "2017-03-01-preview",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {
+                "collation": "[variables('ADPSynapseDWCollation')]",
+                "maxSizeBytes": 263882790666240,
+                "catalogCollation": "[variables('ADPSynapseDWCollation')]"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', variables('ADPSynapseSQLEndpoint'))]"
+            ]
+        },
+        {
+            "type": "Microsoft.Sql/servers/firewallRules",
+            "name": "[concat(variables('ADPSynapseSQLEndpoint'), '/AllowAllWindowsAzureIps')]",
+            "apiVersion": "2015-05-01-preview",
+            "scale": null,
+            "properties": {
+                "startIpAddress": "0.0.0.0",
+                "endIpAddress": "0.0.0.0"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', variables('ADPSynapseSQLEndpoint'))]"
+            ]
+        },
+		{
+            "type": "Microsoft.Sql/servers/databases",
+            "apiVersion": "2017-10-01-preview",
+            "location": "[resourceGroup().location]",
+            "tags": {},
+            "name": "[concat(variables('ADPOperationalSQLEndpoint'), '/NYCDataSets')]",
+			"kind": "v12.0,user",
+            "properties": {
+                "collation": "SQL_Latin1_General_CP1_CI_AS",
+                "maxSizeBytes": 1073741824,
+                "catalogCollation": "SQL_Latin1_General_CP1_CI_AS",
+                "zoneRedundant": false,
+                "readScale": "Disabled",
+                "readReplicaCount": 0
+            },
+            "sku": {
+                "name": "Standard",
+                "tier": "Standard",
+                "capacity": 20
+            },
+			"dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', variables('ADPOperationalSQLEndpoint'))]"
+            ],
+			"resources": [
+				{
+					"name": "Import",
+					"type": "extensions",
+					"apiVersion": "2014-04-01",
+					"dependsOn": [
+						"[resourceId('Microsoft.Sql/servers/databases', variables('ADPOperationalSQLEndpoint'), 'NYCDataSets')]"
+					],
+					"properties": {
+						"storageKeyType": "SharedAccessKey",
+						"storageKey": "?sv=2018-03-28&ss=b&srt=sco&sp=rwl&se=2050-12-30T17:25:52Z&st=2019-04-05T09:25:52Z&spr=https&sig=4qrD8NmhaSmRFu2gKja67ayohfIDEQH3LdVMa2Utykc%3D",
+						"storageUri": "https://mdwresources.blob.core.windows.net/nycdatasets/NYCDataSets.bacpac",
+						"administratorLogin": "[parameters('ADPAdminUserName')]",
+						"administratorLoginPassword": "[parameters('ADPAdminPassword')]",
+						"operationMode": "Import"
+					}
+				}
+			]
+        },
+        {
+            "apiVersion": "2018-06-01",
+            "name": "[variables('ADPDataFactoryName')]",
+            "location": "[variables('ADPDataFactoryLocation')]",
+            "type": "Microsoft.DataFactory/factories",
+            "identity": {
+                "type": "SystemAssigned"
+            },
+            "properties": {}
+        }        
+    ]
+}
