@@ -1,0 +1,60 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",   
+    "variables": {        
+
+        "UniqueSuffix":"[uniqueString(resourceGroup().id)]",       
+        
+        "ADPComputerVisionName":"ADPComputerVision",
+        "ADPComputerVisionSKU": "S1",
+        "ADPCosmosDBAccountName": "[concat('adpcosmosdb-', substring(variables('UniqueSuffix'),0,5))]"
+    },
+    "resources": [       
+         {
+            "type": "Microsoft.CognitiveServices/accounts",
+            "sku": {
+                "name": "[variables('ADPComputerVisionSKU')]"
+            },
+            "kind": "ComputerVision",
+            "name": "[variables('ADPComputerVisionName')]",
+            "apiVersion": "2016-02-01-preview",
+            "location": "[resourceGroup().location]",
+            "scale": null,
+            "properties": {},
+            "dependsOn": []
+        },
+        {
+            "type": "Microsoft.DocumentDB/databaseAccounts",
+            "kind": "GlobalDocumentDB",
+            "name": "[variables('ADPCosmosDBAccountName')]",
+            "apiVersion": "2015-04-08",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "defaultExperience": "Core (SQL)"
+            },
+            "scale": null,
+            "properties": {
+                "ipRangeFilter": "",
+                "enableAutomaticFailover": false,
+                "enableMultipleWriteLocations": true,
+                "isVirtualNetworkFilterEnabled": false,
+                "virtualNetworkRules": [],
+                "databaseAccountOfferType": "Standard",
+                "consistencyPolicy": {
+                    "defaultConsistencyLevel": "Session",
+                    "maxIntervalInSeconds": 5,
+                    "maxStalenessPrefix": 100
+                },
+                "locations": [
+                    {
+                        "locationName": "[resourceGroup().location]",
+                        "provisioningState": "Succeeded",
+                        "failoverPriority": 0
+                    }
+                ],
+                "capabilities": []
+            },
+            "dependsOn": []
+        }        
+    ]
+}

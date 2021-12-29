@@ -1,0 +1,28 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",   
+    "variables": {        
+
+        "UniqueSuffix":"[uniqueString(resourceGroup().id)]",       
+        
+        "ADPDatabricksWorkspaceName":"[concat('ADPDatabricks-',substring(variables('UniqueSuffix'),0,5))]",
+        "ADPDatabricksResourceGroupName": "[concat('Databricks-', resourceGroup().name)]", 
+        "ADPDatabricksResourceGroupID": "[concat(subscription().id, '/resourceGroups/', variables('ADPDatabricksResourceGroupName'))]",
+        "ADPDatabricksTier":"standard"
+    },
+    "resources": [       
+        {
+            "apiVersion": "2018-04-01",
+            "location": "[resourceGroup().location]",
+            "name": "[variables('ADPDatabricksWorkspaceName')]",
+            "sku": {
+                "name": "[variables('ADPDatabricksTier')]"
+            },
+            "comments": "Please do not use an existing resource group for ManagedResourceGroupId.",
+            "properties": {
+                "ManagedResourceGroupId": "[variables('ADPDatabricksResourceGroupID')]"
+            },
+            "type": "Microsoft.Databricks/workspaces"
+        }        
+    ]
+}

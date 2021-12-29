@@ -11,7 +11,7 @@
         },
         "ADPAdminPassword": {
             "type": "string",
-            "defaultValue": "P@ssw0rd123!",
+            "defaultValue": "P@ssw0rd!234",
             "metadata": {
                 "description": "Admin password used to connect to all services during the workshop."
             }   
@@ -19,7 +19,7 @@
     },
     "variables": {
         "ADPAdminUserName":"adpadmin",
-        "ADPAdminPassword":"P@ssw0rd123!",
+        "ADPAdminPassword":"P@ssw0rd!234",
 
         "SynapseSQLDWSize":"DW200c",
 
